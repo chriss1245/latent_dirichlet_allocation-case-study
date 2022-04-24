@@ -1,0 +1,97 @@
+---
+title: "LDA"
+author: "Christopher Manzano"
+date: '2022-04-22'
+output: html_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+* We assume that each document contains many topics in different proportions. These proportions are sampled from a diritchlet distribution $\sum_{n=1}^{10} n^2$
+
+LDA is an unsupervised learning method based on bayesian statistics 
+for topic modeling on the corpus of documents.
+
+![LDA](https://www.researchgate.net/publication/326140642/figure/fig1/AS:644129876873217@1530583938944/Graphical-model-of-latent-Dirichlet-allocation-LDA.png)
+
+* The proportion of topics $\theta_m$ is the porportion of topics per document. It follows a diritchlet distribution.
+
+* The word topic assignament $Z_{m,n}$ follows a multinomial distribution with parameter $\theta_m$ 
+
+* The topic word proportion $phi_k$ is gotten indepently from a diritchlet distribution with a priori prob of $beta$
+
+* Finally the word is a sample of the topic distribution and the word topic distribution.
+
+
+We look for the posterior parameters $\hat{beta}$, $\hat{alpha}$ and for the latent variables of each document (our topic modeling)
+
+$$
+
+
+$$
+
+$z \textrm{score} = \frac{(\textrm{score} - \textrm{mean})}{\textrm{standard  deviation}}$
+
+
+```{r}
+
+rawdocs <- c(
+    "eat turkey on turkey day holiday",
+    "i like to eat cake on holiday",
+    "turkey trot race on thanksgiving holiday",
+    "snail race the turtle",
+    "time travel space race",
+    "movie on thanksgiving",
+    "movie at air and space museum is cool movie",
+    "aspiring movie star"
+)
+
+docs <- strsplit(rawdocs, split = " ")
+
+# unique words
+vocab <- unique( unlist(docs) )
+
+for( i in 1:length(docs) ) {
+    docs[[i]] <- match( docs[[i]], vocab )
+}
+docs
+
+K=2
+
+wt <- matrix( 0, K, length(vocab) )
+colnames(wt) <- vocab
+
+# @ta : topic assignment list
+ta <- lapply( docs, function(x) rep( 0, length(x) ) ) 
+names(ta) <- paste0( "doc", 1:length(docs) )
+```
+
+```{r}
+# @dt : counts correspond to the number of words assigned to each topic for each document
+dt <- matrix( 0, length(docs), K )
+
+for( d in 1:length(docs) ) { 
+    # randomly assign topic to word w
+    for( w in 1:length( docs[[d]] ) ) {
+        ta[[d]][w] <- sample(1:K, 1) 
+
+        # extract the topic index, word id and update the corresponding cell 
+        # in the word-topic count matrix  
+        ti <- ta[[d]][w]
+        wi <- docs[[d]][w]
+        wt[ti, wi] <- wt[ti, wi] + 1    
+    }
+
+    # count words in document d assigned to each topic t
+    for( t in 1:K ) {
+        dt[d, t] <- sum( ta[[d]] == t )
+    }
+}
+
+ta
+docs[[d]][w]
+```
+
