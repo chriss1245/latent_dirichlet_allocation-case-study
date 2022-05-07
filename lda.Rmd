@@ -50,8 +50,16 @@ Jon distribution
 $$ P \propto \prod_{m=1}^M{P(\vec{\theta_m}|\vec{\alpha})}\prod_{k=1}^K{P(\vec{\phi_k|\vec{\beta}}})\prod_{n=1}^{N_m}{P(z_{m,n}| \vec{\theta})P(w_{m,n}|z_{m,n},\vec{\phi_{1:k})}} $$
 
 Thanks to google we discovered more or less the marginal distributions. We can do gibbs sampling.
-$$ p(z_{n,m}\approxk|z_{-n,m}, \{w\}, \vec{\alpha}, \vec{\beta})$$
+$$ p(z_{m,n}=k|z_{-m,n}, \{w\}, \vec{\alpha}, \vec{\beta}) = \frac{t_{m,k} + \alpha_k}{\sum_{i=1}^{K}{t_{m,i}} + \alpha_i} \frac{c_{k, w_{m,n}} + \beta_{w_{m,n}}
+}{\sum_{i=1}^{W}{{c_{k, w_{i}}} + \beta_i}}$$
 
+Where:
+
+$t_{m,k}$: The number of times the topic k appears in document m.
+
+$\alpha_k$: The pseudo posterior diritchlet parameter for the topic k.
+
+$c_{k, w_{m,n}}$: The number of times the word w_{m,n} (m-th document, n-th word) appears in the topic k. (We do not include $w_{m,n}$ in the count.)
 
 ### Dataset
 I selected a [tweets dataset](https://www.kaggle.com/datasets/pashupatigupta/emotion-detection-from-text) wich contains tweets
