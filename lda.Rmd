@@ -23,9 +23,13 @@ Latent dirichlet allocation is a probabilistic unsupervised technique which has 
 applications. On the context of Natural Language processing. It is widely used for topic modeling.
 
 LDA assumes:
+
 * Documents are composed by several topics in different proportions. Thus, each document describes a multinomial distribution of topics.
+
 * Documents' parameters (topic proportions $\vec{\theta}$) follow a dirichlet prior distribution $\vec{\alpha}$.
+
 * Each topic is composed by several words in different proportions. Thus, each topic also describes a multinomial distribution of words.
+
 * Topics' parameters (word proportions $\vec{\phi}$) follow a dirichlet prior distribution $\vec{\beta}$.
 
 For each topic k we sample a $\vec{\phi_k}$ ~ Dir($\vec{\beta}$)
@@ -113,8 +117,11 @@ clean_corpus <- tm_map(clean_corpus, stripWhitespace)
 
 # Visuzlization
 library(wordcloud)
+# sadness
 wordcloud(clean_corpus[1:700], max.words = 50)
+#love
 wordcloud(clean_corpus[700:1400], max.words = 50)
+#hate
 wordcloud(clean_corpus[1400:2100], max.words = 50)
 
 
