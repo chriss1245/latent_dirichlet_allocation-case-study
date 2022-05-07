@@ -1,97 +1,446 @@
 ---
-title: "LDA"
+title: "Case Study: Latent Dirichlet Allocation for Sentiment Detection"
 author: "Christopher Manzano"
 date: '2022-04-22'
 output: html_document
 
+bibliography: Bayes.bib  
+nocite: '@*'
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 ```
 
-* We assume that each document contains many topics in different proportions. These proportions are sampled from a diritchlet distribution $\sum_{n=1}^{10} n^2$
-
-LDA is an unsupervised learning method based on bayesian statistics 
-for topic modeling on the corpus of documents.
-
-![LDA](https://www.researchgate.net/publication/326140642/figure/fig1/AS:644129876873217@1530583938944/Graphical-model-of-latent-Dirichlet-allocation-LDA.png)
-
-* The proportion of topics $\theta_m$ is the porportion of topics per document. It follows a diritchlet distribution.
-
-* The word topic assignament $Z_{m,n}$ follows a multinomial distribution with parameter $\theta_m$ 
-
-* The topic word proportion $phi_k$ is gotten indepently from a diritchlet distribution with a priori prob of $beta$
-
-* Finally the word is a sample of the topic distribution and the word topic distribution.
+### Objective
+* Use latent dirichlet allocation for detecting the proportion of love, hate and sadness a tweet has.
 
 
-We look for the posterior parameters $\hat{beta}$, $\hat{alpha}$ and for the latent variables of each document (our topic modeling)
+### LDA
 
-$$
+Latent dirichlet allocation is a probabilistic unsupervised technique which has several
+applications. On the context of Natural Language processing. It is widely used for topic modeling.
+
+LDA assumes:
+* Documents are composed by several topics in different proportions. Thus, each document describes a multinomial distribution of topics.
+* Documents' parameters (topic proportions $\vec{\theta}$) follow a dirichlet prior distribution $\vec{\alpha}$.
+* Each topic is composed by several words in different proportions. Thus, each topic also describes a multinomial distribution of words.
+* Topics' parameters (word proportions $\vec{\phi}$) follow a dirichlet prior distribution $\vec{\beta}$.
+
+For each topic k we sample a $\vec{\phi_k}$ ~ Dir($\vec{\beta}$)
+Then for each document m, we are going to get a $\vec{\theta_m}$ ~ Dir($\vec{\alpha}$).
+For each document we decide the number of words $N_m$ we want.
+For each word n we want in the document m,  we are going to sample a topic $k$  ~ Multinomial($\vec{\theta_m}$).
+Once the topic is chosen, we sample the word $w_{m,n}$ ~ Multinomial($\vec{\phi_k}$)
+
+![Ilustration of LDA generative process](https://miro.medium.com/max/637/1*taTOiaCpd_CzGugx_PticQ.png)
 
 
-$$
+The whole model can be seen like this:
+![LDA generative process](https://www.researchgate.net/publication/326140642/figure/fig1/AS:644129876873217@1530583938944/Graphical-model-of-latent-Dirichlet-allocation-LDA.png)
 
-$z \textrm{score} = \frac{(\textrm{score} - \textrm{mean})}{\textrm{standard  deviation}}$
 
+In order to make things a little easier, we include a latent variable $z_{m,n}$ which will tell the which topic the word $w_{m,n}$ belongs to
+
+We look for the posterior parameters $\vec{\theta_1}, \vec{\theta_2}, ... \vec{\theta_M}$, $\vec{\phi_1}, ..., vec{\phi_K}$.
+In other words. We are going to compute the relevance of topics per document. And the relevance of word per topic.
+
+Jon distribution
+$$ P \propto \prod_{m=1}^M{P(\vec{\theta_m}|\vec{\alpha})}\prod_{k=1}^K{P(\vec{\phi_k|\vec{\beta}}})\prod_{n=1}^{N_m}{P(z_{m,n}| \vec{\theta})P(w_{m,n}|z_{m,n},\vec{\phi_{1:k})}} $$
+
+Thanks to google we discovered more or less the marginal distributions. We can do gibbs sampling.
+$$ p(z_{n,m}\approxk|z_{-n,m}, \{w\}, \vec{\alpha}, \vec{\beta})$$
+
+
+### Dataset
+I selected a [tweets dataset](https://www.kaggle.com/datasets/pashupatigupta/emotion-detection-from-text) wich contains tweets
+labeled with some emotions.
 
 ```{r}
+data <- read.csv("tweet_emotions.csv")
 
-rawdocs <- c(
-    "eat turkey on turkey day holiday",
-    "i like to eat cake on holiday",
-    "turkey trot race on thanksgiving holiday",
-    "snail race the turtle",
-    "time travel space race",
-    "movie on thanksgiving",
-    "movie at air and space museum is cool movie",
-    "aspiring movie star"
-)
-
-docs <- strsplit(rawdocs, split = " ")
-
-# unique words
-vocab <- unique( unlist(docs) )
-
-for( i in 1:length(docs) ) {
-    docs[[i]] <- match( docs[[i]], vocab )
-}
-docs
-
-K=2
-
-wt <- matrix( 0, K, length(vocab) )
-colnames(wt) <- vocab
-
-# @ta : topic assignment list
-ta <- lapply( docs, function(x) rep( 0, length(x) ) ) 
-names(ta) <- paste0( "doc", 1:length(docs) )
+unique(data$sentiment)
+head(data$content)
 ```
+As you can see, there are more emotions than the ones I mentioned. Since the dataset is considerably big and taking into account that the lda we are going to use is not optimized, I consider important to remove complexity. That is why I will only focus on the 3 emotions. Also I am going to filter only 2100 documents.
 
 ```{r}
-# @dt : counts correspond to the number of words assigned to each topic for each document
-dt <- matrix( 0, length(docs), K )
+indices <- data$sentiment == "sadness" | data$sentiment == "love" | data$sentiment == "hate"
+data <- data[indices,1:2]
 
-for( d in 1:length(docs) ) { 
-    # randomly assign topic to word w
-    for( w in 1:length( docs[[d]] ) ) {
-        ta[[d]][w] <- sample(1:K, 1) 
+#proportion of sadness
+mean(data$sentiment=="sadness")
 
-        # extract the topic index, word id and update the corresponding cell 
-        # in the word-topic count matrix  
-        ti <- ta[[d]][w]
-        wi <- docs[[d]][w]
-        wt[ti, wi] <- wt[ti, wi] + 1    
-    }
+#proportion of love
+mean(data$sentiment=="love")
 
-    # count words in document d assigned to each topic t
-    for( t in 1:K ) {
-        dt[d, t] <- sum( ta[[d]] == t )
-    }
+#proportion of hate
+mean(data$sentiment=="hate")
+
+
+# Sampling 1000 tweets per emotion
+sad <- sample(which(data$sentiment=="sadness"), size=700, replace=F)
+love <- sample(which(data$sentiment=="love"), size=700, replace=F)
+hate <- sample(which(data$sentiment=="hate"), size=700, replace=F)
+
+df <-data[c(sad, love, hate),]
+```
+
+### Preprocessing
+In order to go on with LDA we need to do some natural language processing steps.
+
+```{r}
+library(tm)
+
+# NLP
+corpus <-  Corpus(VectorSource(df$content))
+clean_corpus <-  tm_map(corpus, tolower)
+clean_corpus <- tm_map(clean_corpus, removeNumbers)
+clean_corpus <- tm_map(clean_corpus, removePunctuation)
+clean_corpus <- tm_map(clean_corpus, removeWords,
+                       stopwords("en"))
+
+clean_corpus <- tm_map(clean_corpus, stripWhitespace)
+
+# Visuzlization
+library(wordcloud)
+wordcloud(clean_corpus[1:700], max.words = 50)
+wordcloud(clean_corpus[700:1400], max.words = 50)
+wordcloud(clean_corpus[1400:2100], max.words = 50)
+
+
+# Computing bag of words
+bow = apply(TermDocumentMatrix(clean_corpus), 1, sum)
+```
+
+
+### Hyperparameters
+```{r}
+# Number of topics K
+topics <- 3
+
+# Number of words N
+words <- length(bow)
+
+# Convert the corpus on a list of documents (vectors with words)
+cc <- as.list(clean_corpus, function(x) strsplit(x, " "))
+
+# Since the tweets are small. There is a lot of chance of getting a tweet which ends up empty after filtering stopwords.
+non_empty = cc!=""
+cc <- cc[cc!=""]
+
+#Number of documents M
+documents <- length(cc)
+
+# Prior distributions
+alpha <- c(1,1,1)
+beta <- rep(1, words)
+names(beta) = names(bow)
+
+# Gibbs sampling hyperparameters
+iterations <- 5000
+burning <- 200
+thining <- 5
+
+```
+
+### Initialization
+We are going to assign randomly a topic to each word. Then we are going to compute the number of words per topic (W x 3 matrix )and the number of topics per document (M x 3 matrix).
+
+```{r eval=FALSE}
+### Randomly initialization
+# List with words per document
+doc_words = NULL
+
+# List of topics each word belongs per document
+topic_words = NULL
+
+for (i in 1:(documents)){
+  l <- list()
+  words_ <- strsplit(cc[[i]], " ")[[1]]
+  l[[1]]  <- words_[! is.na(bow[words_])]
+  doc_words <- rbind(doc_words, l)
+  
+  l <- list()
+  l[[1]] <- sample(seq(1:topics), replace=T, size=length(words_[[1]]))
+  topic_words <- rbind(topic_words, l)
+
 }
 
-ta
-docs[[d]][w]
+
+# Word to id converter
+w2id <- seq(1,words)
+names(w2id) <- names(bow)
+
+### Computing count matrices
+# Word per topic matrix
+wpt <- matrix(0, nrow=words, ncol=topics)
+rownames(wpt) <- names(bow)
+
+# Topic per document matrix
+tpd <- matrix(0, nrow=documents, ncol=topics)
+
+m <- 1
+for (doc_ in doc_words){
+  n <- 1
+  for (word_ in doc_){
+    wi <- w2id[word_]
+    t <- topic_words[[m]][n]
+    wpt[wi, t]  = wpt[wi, t]  + 1
+    tpd[m, t] = tpd[m, t] + 1
+    
+    n = n + 1
+  }
+  m = m + 1
+}
 ```
+
+### Gibbs Sampling
+```{r eval=FALSE}
+
+phis <- array(0, c(iterations, words, topics))
+thetas <- array(0, c(iterations, documents, topics))
+aux <- 1
+for (iteration in 1:(iterations + burning)){
+  m <- 1
+  for (doc_ in doc_words){
+    n <- 1
+    for (word_ in doc_){
+      wi <- w2id[word_]
+      t <- topic_words[[m]][n]
+      wpt[wi, t]  = wpt[wi, t]  - 1
+      tpd[m, t] = tpd[m, t] - 1
+      
+      probs <- rep(0, topics)
+      for (k in 1:topics){
+        # multiply times 100 for stability
+        word_odds <- (wpt[wi, k] + beta[wi])/(sum(beta) + sum(wpt[,k]) )
+        topic_odds <- (tpd[m, k] + alpha[k])/(sum(alpha) + sum(tpd[,k])) 
+        probs[k] <- topic_odds*word_odds
+      }
+      
+      # Samplig
+      new_t <- sample(1:topics, size=1, prob = probs/sum(probs))
+      
+      # Change the topic the word belongs to
+      topic_words[[m]][n] = new_t
+      
+      # Updating counts
+      wpt[wi, new_t]  = wpt[wi, new_t]  + 1
+      tpd[m, new_t] = tpd[m, new_t] + 1
+      n = n + 1
+    }
+    m = m + 1
+  }
+  
+  # Saving iterations
+  if(iteration > burning && iteration %% thining == 0){
+    phi_ <- wpt+beta
+    sum_phi <- apply(phi_, 2, sum)
+    # normalizing the probabilities
+    phi_ <- t(t(phi_)/sum_phi)
+    phis[aux,,] <- phi_
+    
+    theta_ <- t(t(tpd) + alpha)
+    sum_theta <- apply(theta_, 1, sum)
+    theta_ <- theta_/sum_theta
+    
+    thetas[aux,,] <- theta_
+    
+    aux <- aux + 1
+    if ( iteration %% 500 == 0)
+      print("working")
+  }
+}
+```
+
+**Note:** All this code takes really a lot of time to run. Therefore I will not run it on the notebook but I will run
+it on a separated R file. Then I will just save the results. And load them.
+
+After loading the results we are interested on two 3d arrays. One for betas and one for phis.
+![An ilustration of the 3d arrays. (Ignore the genotype thing, i could not find any better plot xd)](https://smcclatchy.github.io/mapping/fig/threeD_array.png)
+
+
+### Analysis
+```{r}
+load("results.RData")
+
+attach(l)
+names(l)
+``` 
+Just for the topics, we have a total of 3 times 2100  (6300) traceplots, autocorrelations and distributions. For the number of words it is approximately 5300 words times 3 (15900). This makes it difficult to check if the model reached stationary state. There are several ways of messuring the performance of lda. If the performance of lda is good, it implies that the algorithm converged. 
+Some of these metrics are:
+* Perplexity: Mesures how surprising is a new tweet (log-likelihood of the test set).
+* Topic coherence: A family of messures that mesure how much the words support the topics.
+In addition, these metrics are method independent (gibbs, variational methods)
+
+However on this notebook we are not going to use any of them (We really should do it if we really want to use this on real life) because
+these metrics  mesure the performance of lda. We jsut want to check if it converged (Also I am lazy).
+
+We are going to see some trace plots at random and find enough evidence for telling that the algorithm converges.
+
+We assume that a beta(a=9, b=1) prior distribution in favor of convergence. We sample 20 trace plots for thetas and for phis.
+We model a bernulli process of parameter theta witch follows our beta distribution with a=10, b=1.
+At the end we will have a beta posterior a\*=a+k, b\*=b+n-k
+
+We demand a proportion of convergence greater or equal to 0.8 with a credibility of 0.01
+
+####Topics
+
+```{r   fig.show="hold", out.width="25%"}
+#prior parameters
+a=9
+b=1
+
+set.seed(43)
+samples=40
+
+
+# Documents
+doc_topic_idx <- sample(1:topics, replace=TRUE, size=samples)
+
+docs_idx <- sample(1:documents, replace=TRUE, size=samples)
+
+par(mar=c(as.integer(samples/2), 2, .5, .5))
+for (k in 1:samples){
+  plot(thetas[,docs_idx[k],doc_topic_idx[k]], type="l")
+}
+``` 
+
+**Did the topic distribution converge?**
+```{r}
+
+good_topic_trace_plots = 39
+
+X <- seq(0,1, 0.01)
+plot(X,dbeta(X, a+good_topic_trace_plots, b+samples-good_topic_trace_plots), type="l")
+
+#lover bound at 0.01
+qbeta(0.01, a+good_topic_trace_plots, b+samples-good_topic_trace_plots)
+
+```
+
+**Therefore we say that the topic distributions reached stationary state**
+
+
+#### Words
+
+```{r  figures-side, fig.show="hold", out.width="25%"}
+set.seed(43)
+samples=40
+
+# Documents
+word_topic_idx <- sample(1:topics, replace=TRUE, size=samples)
+
+words_idx <- sample(1:words, replace=TRUE, size=samples)
+
+par(mar=c(as.integer(samples/2), 2, .5, .5))
+for (k in 1:samples){
+  plot(phis[,words_idx[k],word_topic_idx[k]], type="l")
+}
+
+``` 
+
+
+We can see that we have very small  uncertanty. In the worse case scenario. We end up with a 0.7 proportion of convergence.  
+Which I consider fine.
+
+Let's compute our posterioir stuff
+```{r}
+traceplots = 40
+converged = 16
+
+plotX <- seq(0,1, 0.01)
+plot(X,dbeta(X, a+converged, b+traceplots-converged), type="l")
+
+qbeta(0.05, a+converged, b+traceplots-converged)
+
+
+```
+
+We can not tell. More likely not. 
+
+What do we do?
+
+Well, the topics seem to converge. It is easier since per document we distribute 1 among 3 tipics.
+In contrast, with words we distribute 1 among aroung 5000 words. And a very big amount of words should have a
+probability almost 0 (they are irrelevant for the topic). Maybe it is not important if all the words per topic converge.
+So we will look at most important words in the topics in order to decide if the topics make sense.
+
+```{r fig.show="hold", out.width="25%"}
+top <- 10
+words_idx <- NULL
+words_prob <- NULL
+for (k in 1:topics){
+  temp <- apply(phis[,,k], 2, mean)
+  temp2 <- sort(temp, decreasing=T, index=T)
+  idxs <- temp2$ix[1:top]
+  values <- temp2$x[1:top]
+  words_idx <- cbind(words_idx, idxs)
+  words_prob <- cbind(words_prob, values)
+  
+  for (idx in words_idx)
+    plot(phis[,idx, k], type="l")
+}
+
+```
+
+
+
+### Results
+
+Finally, lets see whether LDA was able to capture hate, love and sadness. 
+In order to see this, we are going to check the 10 most important words per topic.
+
+```{r fig.show="hold", out.width="33%"}
+top <- 10
+words_idx <- NULL
+words_prob <- NULL
+for (k in 1:topics){
+  temp <- apply(phis[,,k], 2, mean)
+  temp2 <- sort(temp, decreasing=T, index=T)
+  idxs <- temp2$ix[1:top]
+  values <- temp2$x[1:top]
+  words_idx <- cbind(words_idx, idxs)
+  words_prob <- cbind(words_prob, values)
+  
+barplot(words_prob[,k], legend.text=names(w2id[words_idx[,k]]), col=c("#9E0142", "#D53E4F", "#F46D43", "#FDAE61", "#FEE08B", "#E6F598", "#ABDDA4", "#66C2A5", "#3288BD", "#5E4FA2"))
+
+}
+```
+
+Now lets check some of the documents
+```{r fig.show="hold", out.width="50%"}
+set.seed(44)
+docs <- sample(1:documents, 40, replace=F)
+
+for (d in docs){
+  plot(density(thetas[,d,1], bw=0.1), col="red", xlab=df[d,1],sub=cc[[d]], main="")
+  lines(density(thetas[,d,2], bw=0.1), col="blue")
+  lines(density(thetas[,d,3], bw=0.1), col="green")
+}
+
+```
+
+### Conclusions
+We have implemented an LDA with 3 topics and 2100 documents with a gibbs sampling.
+At the end we got not really bad results. We have seen that the word distributions did not converge.
+Maybe we could get better results by removing words. We had a lot of "invented words". If we treated them
+correctly, we probably would improve this model.
+
+In addition, by reading the tweets we can see a lot of made up words. People really types ugly on these 
+plataforms xd. That makes our task more difficult. Because thanks and thnks are the same. But in our model they are different.
+
+The topics more or less seem to have a meaning. Specially love. It seems that love was really captured by
+the LDA model.
+
+Regarding with the topic distributions, in most of the cases we did not see a predominant topic. In the cases
+we did, topic blue and green seem to dominate alternatively in the documents labeled as sadness or hate.
+
+
+LDA by itself  was not really able of capturing the sentiments. Maybe if we included a classifier at the end we may see more interesting results.
+
+### References
+
 
